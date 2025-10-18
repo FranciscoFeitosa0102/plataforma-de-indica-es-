@@ -1,0 +1,237 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { UserPlus, TrendingUp, Award, Users } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import KanbanBoard from "../components/kanban/KanbanBoard";
+
+export default function MinhasIndicacoes() {
+  const [user, setUser] = useState(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+  const [userCompanies, setUserCompanies] = useState([]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await base44.auth.me();
+        setUser(userData);
+
+        const memberships = await base44.entities.Membership.filter({ user_id: userData.id });
+        const companiesFromMemberships = memberships.map(m => ({ id: m.company_id, name: m.company_name }));
+        const uniqueCompanies = [...new Map(companiesFromMemberships.map(item => [item['id'], item])).values()];
+        setUserCompanies(uniqueCompanies);
+
+        const activeMembershipId = localStorage.getItem("activeMembershipId");
+        const activeMembership = memberships.find(m => m.id === activeMembershipId);
+        if (activeMembership) {
+          setSelectedCompanyId(activeMembership.company_id);
+        } else if (uniqueCompanies.length > 0) {
+          setSelectedCompanyId(uniqueCompanies[0].id);
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const { data: leads = [], isLoading } = useQuery({
+    queryKey: ['my-leads', user?.id, selectedCompanyId],
+    queryFn: () => base44.entities.Lead.filter({
+      indicador_id: user?.id,
+      company_id: selectedCompanyId
+    }, "-created_date"),
+    enabled: !!user?.id && !!selectedCompanyId,
+    refetchInterval: 10000,
+  });
+
+  const { data: allLeads = [] } = useQuery({
+    queryKey: ['all-leads-ranking', selectedCompanyId],
+    queryFn: () => base44.entities.Lead.filter({ company_id: selectedCompanyId }, "-created_date"),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 30000,
+  });
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['all-users-for-ranking', selectedCompanyId],
+    queryFn: () => base44.entities.User.filter({ company_id: selectedCompanyId }), // This might need adjustment based on memberships
+    enabled: !!selectedCompanyId,
+  });
+
+  const getTopIndicadores = () => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    const indicadoresCount = {};
+    allLeads.forEach(lead => {
+      const leadDate = new Date(lead.created_date);
+      if (leadDate.getMonth() === currentMonth && leadDate.getFullYear() === currentYear) {
+        if (!indicadoresCount[lead.indicador_id]) {
+          const indicadorUser = allUsers.find(u => u.id === lead.indicador_id);
+          indicadoresCount[lead.indicador_id] = {
+            nome: lead.indicador_nome,
+            photo_url: indicadorUser?.photo_url,
+            count: 0,
+          };
+        }
+        indicadoresCount[lead.indicador_id].count++;
+      }
+    });
+
+    return Object.values(indicadoresCount)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  };
+
+  const topIndicadores = getTopIndicadores();
+  const minhasIndicacoesMes = leads.filter(lead => {
+    const leadDate = new Date(lead.created_date);
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    return leadDate.getMonth() === currentMonth && leadDate.getFullYear() === currentYear;
+  }).length;
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div className="flex flex-col">
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Minhas Indicações</h1>
+            <p className="text-slate-600">Acompanhe o status de suas indicações em tempo real</p>
+          </div>
+          <Link to={createPageUrl("NovaIndicacao")}>
+            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg h-12 px-6">
+              <UserPlus className="w-5 h-5 mr-2" />
+              Nova Indicação
+            </Button>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <TrendingUp className="w-5 h-5" />
+                Total de Indicações
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-5xl font-bold">{leads.length}</p>
+              <p className="text-blue-100 text-sm mt-2">{minhasIndicacoesMes} este mês</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Award className="w-5 h-5" />
+                Fechados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-5xl font-bold">
+                {leads.filter(l => l.status === 'fechado').length}
+              </p>
+              <p className="text-green-100 text-sm mt-2">Parabéns! 🎉</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Users className="w-5 h-5" />
+                Em Andamento
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-5xl font-bold">
+                {leads.filter(l => l.status === 'nova' || l.status === 'em_contato').length}
+              </p>
+              <p className="text-purple-100 text-sm mt-2">Aguardando retorno</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="mb-8 shadow-xl border-0 bg-white/90 backdrop-blur">
+          <CardHeader className="border-b bg-gradient-to-r from-orange-50 to-yellow-50">
+            <CardTitle className="flex items-center gap-2">
+              <Award className="w-6 h-6 text-orange-600" />
+              🏆 Ranking Mensal - Top 5 Indicadores
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            {topIndicadores.length > 0 ? (
+              <div className="space-y-4">
+                {topIndicadores.map((indicador, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-center gap-4 p-4 rounded-xl transition-all hover:scale-105 ${
+                      index === 0 ? 'bg-gradient-to-r from-yellow-100 to-orange-100 shadow-lg' :
+                      index === 1 ? 'bg-gradient-to-r from-gray-100 to-slate-200' :
+                      index === 2 ? 'bg-gradient-to-r from-orange-50 to-amber-100' :
+                      'bg-slate-50'
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                      index === 0 ? 'bg-yellow-500 text-white' :
+                      index === 1 ? 'bg-gray-400 text-white' :
+                      index === 2 ? 'bg-orange-600 text-white' :
+                      'bg-blue-500 text-white'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <Avatar className="w-12 h-12 border-2 border-white shadow-md">
+                      {indicador.photo_url && <AvatarImage src={indicador.photo_url} />}
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-500 text-white font-bold">
+                        {indicador.nome.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900">{indicador.nome}</p>
+                      <p className="text-sm text-slate-600">{indicador.count} indicações este mês</p>
+                    </div>
+                    {index === 0 && (
+                      <Badge className="bg-yellow-500 text-white border-0 shadow-md">
+                        👑 Líder
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-slate-500 py-8">Nenhuma indicação este mês ainda</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Status das Indicações</h2>
+          <p className="text-slate-600 mb-6">
+            Acompanhe em tempo real o status de cada indicação. Quando o vendedor atualizar, você verá aqui automaticamente.
+          </p>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-64 w-full" />
+          </div>
+        ) : (
+          <KanbanBoard leads={leads} isVendedor={false} currentUser={user} />
+        )}
+      </div>
+    </div>
+  );
+}
