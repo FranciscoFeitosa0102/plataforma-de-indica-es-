@@ -1,0 +1,179 @@
+import React from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart3, TrendingUp, Users, Building2, CheckCircle, XCircle, Target } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+
+export default function Relatorios() {
+  const { data: leads = [], isLoading: leadsLoading } = useQuery({
+    queryKey: ['all-leads-report'],
+    queryFn: () => base44.entities.Lead.list("-created_date"),
+  });
+
+  const { data: users = [], isLoading: usersLoading } = useQuery({
+    queryKey: ['all-users-report'],
+    queryFn: () => base44.entities.User.list(),
+  });
+
+  const { data: companies = [], isLoading: companiesLoading } = useQuery({
+    queryKey: ['all-companies-report'],
+    queryFn: () => base44.entities.Company.list(),
+  });
+
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  const leadsThisMonth = leads.filter(lead => {
+    const leadDate = new Date(lead.created_date);
+    return leadDate.getMonth() === currentMonth && leadDate.getFullYear() === currentYear;
+  });
+
+  const statusCounts = {
+    nova: leads.filter(l => l.status === 'nova').length,
+    em_contato: leads.filter(l => l.status === 'em_contato').length,
+    sem_interesse: leads.filter(l => l.status === 'sem_interesse').length,
+    fechado: leads.filter(l => l.status === 'fechado').length,
+    outra_area: leads.filter(l => l.status === 'outra_area').length,
+  };
+
+  const conversionRate = leads.length > 0 
+    ? ((statusCounts.fechado / leads.length) * 100).toFixed(1)
+    : 0;
+
+  const topIndicadores = Object.values(
+    leads.reduce((acc, lead) => {
+      if (!acc[lead.indicador_id]) {
+        acc[lead.indicador_id] = {
+          nome: lead.indicador_nome,
+          count: 0,
+        };
+      }
+      acc[lead.indicador_id].count++;
+      return acc;
+    }, {})
+  ).sort((a, b) => b.count - a.count).slice(0, 5);
+
+  const topVendedores = Object.values(
+    leads.filter(l => l.vendedor_id).reduce((acc, lead) => {
+      if (!acc[lead.vendedor_id]) {
+        acc[lead.vendedor_id] = {
+          nome: lead.vendedor_nome,
+          fechados: 0,
+          total: 0,
+        };
+      }
+      acc[lead.vendedor_id].total++;
+      if (lead.status === 'fechado') {
+        acc[lead.vendedor_id].fechados++;
+      }
+      return acc;
+    }, {})
+  ).sort((a, b) => b.fechados - a.fechados).slice(0, 5);
+
+  if (leadsLoading || usersLoading || companiesLoading) {
+    return (
+      <div className="min-h-screen p-4 md:p-8">
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Relatórios e Estatísticas</h1>
+          <p className="text-slate-600">Visão geral completa da plataforma</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <TrendingUp className="w-4 h-4" />
+                Total de Indicações
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{leads.length}</p>
+              <p className="text-blue-100 text-sm mt-2">{leadsThisMonth.length} este mês</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <CheckCircle className="w-4 h-4" />
+                Taxa de Conversão
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{conversionRate}%</p>
+              <p className="text-green-100 text-sm mt-2">{statusCounts.fechado} fechados</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <Users className="w-4 h-4" />
+                Usuários Ativos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{users.filter(u => u.ativo).length}</p>
+              <p className="text-purple-100 text-sm mt-2">de {users.length} total</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-orange-500 to-red-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <Building2 className="w-4 h-4" />
+                Empresas Ativas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{companies.filter(c => c.ativa).length}</p>
+              <p className="text-orange-100 text-sm mt-2">de {companies.length} total</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+            <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+                Status dos Leads
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                {Object.entries(statusCounts).map(([status, count]) => {
+                  const percentage = leads.length > 0 ? (count / leads.length * 100).toFixed(1) : 0;
+                  const statusLabels = {
+                    nova: { label: 'Novas Indicações', color: 'bg-green-500' },
+                    em_contato: { label: 'Em Contato', color: 'bg-yellow-500' },
+                    sem_interesse: { label: 'Não Tem Interesse', color: 'bg-red-500' },
+                    fechado: { label: 'Fechados', color: 'bg-purple-500' },
+                    outra_area: { label: 'De Outra Área', color: 'bg-gray-500' },
+                  };
+
+                  return (
+                    <div key={status}>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm font-medium text-slate-700">
+                          {statusLabels[status].label}
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">
+                          {count} ({percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                        <div
+                          className={`${statusLabels[status].color} h-3 rounded-full transition-all duration-500`}
+                          style={{ width: `${percentage}%` }}
+                        />
