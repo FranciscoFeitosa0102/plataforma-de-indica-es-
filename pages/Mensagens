@@ -1,0 +1,179 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { MessageSquare, Send, Users } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+export default function Mensagens() {
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [newMessage, setNewMessage] = useState("");
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const userData = await base44.auth.me();
+      setUser(userData);
+    };
+    fetchUser();
+  }, []);
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['all-users-messages'],
+    queryFn: () => base44.entities.User.list(),
+    enabled: !!user,
+  });
+
+  const { data: messages = [] } = useQuery({
+    queryKey: ['messages', user?.id, selectedUser?.id],
+    queryFn: async () => {
+      if (!selectedUser) return [];
+      const sent = await base44.entities.Message.filter({
+        from_user_id: user.id,
+        to_user_id: selectedUser.id,
+      }, "-created_date");
+      const received = await base44.entities.Message.filter({
+        from_user_id: selectedUser.id,
+        to_user_id: user.id,
+      }, "-created_date");
+      return [...sent, ...received].sort((a, b) => 
+        new Date(a.created_date) - new Date(b.created_date)
+      );
+    },
+    enabled: !!user && !!selectedUser,
+    refetchInterval: 5000,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (data) => base44.entities.Message.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      setNewMessage("");
+    },
+  });
+
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedUser) return;
+
+    sendMessageMutation.mutate({
+      from_user_id: user.id,
+      from_user_name: user.full_name,
+      to_user_id: selectedUser.id,
+      to_user_name: selectedUser.full_name,
+      message: newMessage,
+    });
+  };
+
+  const otherUsers = allUsers.filter(u => u.id !== user?.id);
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Mensagens</h1>
+          <p className="text-slate-600">Comunicação interna entre usuários</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+            <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                Contatos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-[600px] overflow-y-auto">
+                {otherUsers.map((otherUser) => (
+                  <button
+                    key={otherUser.id}
+                    onClick={() => setSelectedUser(otherUser)}
+                    className={`w-full p-4 flex items-center gap-3 hover:bg-blue-50 transition-colors border-b ${
+                      selectedUser?.id === otherUser.id ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <Avatar className="w-10 h-10 border-2 border-slate-200">
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-500 text-white font-semibold">
+                        {otherUser.full_name?.charAt(0).toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-slate-900">{otherUser.full_name}</p>
+                      <p className="text-xs text-slate-500">
+                        {otherUser.user_type?.charAt(0).toUpperCase() + otherUser.user_type?.slice(1)}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2 shadow-xl border-0 bg-white/90 backdrop-blur">
+            <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-blue-600" />
+                {selectedUser ? selectedUser.full_name : 'Selecione um contato'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {selectedUser ? (
+                <div className="flex flex-col h-[600px]">
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    {messages.map((message) => {
+                      const isMyMessage = message.from_user_id === user?.id;
+                      return (
+                        <div
+                          key={message.id}
+                          className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-xs md:max-w-md p-3 rounded-2xl ${
+                              isMyMessage
+                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-900'
+                            }`}
+                          >
+                            <p className="text-sm">{message.message}</p>
+                            <p className={`text-xs mt-1 ${isMyMessage ? 'text-blue-100' : 'text-slate-500'}`}>
+                              {format(new Date(message.created_date), "HH:mm", { locale: ptBR })}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <form onSubmit={handleSendMessage} className="p-4 border-t bg-slate-50">
+                    <div className="flex gap-3">
+                      <Input
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="Digite sua mensagem..."
+                        className="flex-1"
+                      />
+                      <Button
+                        type="submit"
+                        disabled={!newMessage.trim() || sendMessageMutation.isPending}
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                      >
+                        <Send className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <div className="h-[600px] flex items-center justify-center text-slate-400">
+                  Selecione um contato para iniciar uma conversa
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
