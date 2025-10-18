@@ -1,0 +1,179 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Building2, Plus, Trash2, Edit2, Save, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
+export default function Empresas() {
+  const queryClient = useQueryClient();
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [editName, setEditName] = useState("");
+
+  const { data: companies = [], isLoading } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => base44.entities.Company.list("-created_date"),
+  });
+
+  const createCompanyMutation = useMutation({
+    mutationFn: (data) => base44.entities.Company.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      setShowAddDialog(false);
+      setNewCompanyName("");
+    },
+  });
+
+  const updateCompanyMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Company.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      setEditingId(null);
+    },
+  });
+
+  const handleAddCompany = (e) => {
+    e.preventDefault();
+    if (newCompanyName.trim()) {
+      createCompanyMutation.mutate({
+        nome: newCompanyName,
+        ativa: true,
+      });
+    }
+  };
+
+  const handleUpdateCompany = (id) => {
+    if (editName.trim()) {
+      updateCompanyMutation.mutate({
+        id,
+        data: { nome: editName },
+      });
+    }
+  };
+
+  const handleToggleStatus = (id, currentStatus) => {
+    updateCompanyMutation.mutate({
+      id,
+      data: { ativa: !currentStatus },
+    });
+  };
+
+  const startEditing = (company) => {
+    setEditingId(company.id);
+    setEditName(company.nome);
+  };
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Gerenciamento de Empresas</h1>
+            <p className="text-slate-600">Cadastre e gerencie as empresas destino das indicações</p>
+          </div>
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg">
+                <Plus className="w-5 h-5 mr-2" />
+                Nova Empresa
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Adicionar Nova Empresa</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddCompany} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome da Empresa</Label>
+                  <Input
+                    id="nome"
+                    value={newCompanyName}
+                    onChange={(e) => setNewCompanyName(e.target.value)}
+                    placeholder="Ex: Cartão de TODOS Uberaba"
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={createCompanyMutation.isPending}>
+                  {createCompanyMutation.isPending ? 'Adicionando...' : 'Adicionar Empresa'}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-xl border-0 mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Building2 className="w-6 h-6" />
+              Total de Empresas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-5xl font-bold">{companies.length}</p>
+            <p className="text-blue-100 text-sm mt-2">
+              {companies.filter(c => c.ativa).length} ativas
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+          <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+            <CardTitle>Lista de Empresas</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50">
+                    <TableHead>Nome da Empresa</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Data de Cadastro</TableHead>
+                    <TableHead>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companies.map((company) => (
+                    <TableRow key={company.id} className={!company.ativa ? 'opacity-50' : ''}>
+                      <TableCell>
+                        {editingId === company.id ? (
+                          <div className="flex gap-2">
+                            <Input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              className="max-w-sm"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <Building2 className="w-5 h-5 text-blue-600" />
+                            <span className="font-medium text-slate-900">{company.nome}</span>
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={company.ativa ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                          {company.ativa ? 'Ativa' : 'Inativa'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-slate-600">
+                        {new Date(company.created_date).toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {editingId === company.id ? (
+                            <>
+                              <Button
+                                size="sm"
