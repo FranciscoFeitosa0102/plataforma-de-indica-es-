@@ -1,0 +1,107 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, User, Briefcase, Building } from 'lucide-react';
+import { Label } from "@/components/ui/label";
+
+export default function OnboardingProfileSelector({ user }) {
+  const queryClient = useQueryClient();
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+
+  const { data: companies = [], isLoading: companiesLoading } = useQuery({
+    queryKey: ['all-companies-onboarding'],
+    queryFn: () => base44.entities.Company.filter({ ativa: true }),
+  });
+
+  const createMembershipMutation = useMutation({
+    mutationFn: (data) => base44.entities.Membership.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      window.location.href = '/'; // Reload to apply new context
+    },
+  });
+
+  const handleCreateProfile = () => {
+    if (!selectedRole || !selectedCompanyId) {
+      alert('Por favor, selecione uma empresa e um perfil.');
+      return;
+    }
+
+    const company = companies.find((c) => c.id === selectedCompanyId);
+    if (!company) return;
+
+    createMembershipMutation.mutate({
+      user_id: user.id,
+      user_name: user.full_name,
+      company_id: company.id,
+      company_name: company.nome,
+      role: selectedRole,
+    });
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <Card className="w-full max-w-md shadow-2xl">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Bem-vindo(a), {user.full_name}!</CardTitle>
+          <CardDescription>Para começar, precisamos saber um pouco mais sobre você.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2"><Building className="w-4 h-4"/>A qual empresa você pertence?</Label>
+            <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma empresa..." />
+              </SelectTrigger>
+              <SelectContent>
+                {companiesLoading ? (
+                  <div className="flex items-center justify-center p-2"><Loader2 className="w-4 h-4 animate-spin"/></div>
+                ) : (
+                  companies.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.nome}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-3">
+             <Label className="flex items-center gap-2"><User className="w-4 h-4"/>Qual será o seu perfil principal?</Label>
+             <div className="grid grid-cols-2 gap-4">
+                <Button 
+                    variant={selectedRole === 'indicador' ? 'default' : 'outline'}
+                    onClick={() => setSelectedRole('indicador')}
+                    className="h-20 flex flex-col gap-2"
+                >
+                    <User className="w-6 h-6"/>
+                    <span className="font-semibold">Sou Indicador</span>
+                </Button>
+                 <Button 
+                    variant={selectedRole === 'vendedor' ? 'default' : 'outline'}
+                    onClick={() => setSelectedRole('vendedor')}
+                    className="h-20 flex flex-col gap-2"
+                >
+                    <Briefcase className="w-6 h-6"/>
+                    <span className="font-semibold">Sou Vendedor</span>
+                </Button>
+             </div>
+          </div>
+
+          <Button
+            onClick={handleCreateProfile}
+            disabled={!selectedRole || !selectedCompanyId || createMembershipMutation.isPending}
+            className="w-full"
+          >
+            {createMembershipMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmar e Acessar'}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
