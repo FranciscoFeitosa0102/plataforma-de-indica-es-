@@ -1,0 +1,36 @@
+{
+  "name": "Message",
+  "type": "object",
+  "properties": {
+    "from_user_id": {
+      "type": "string",
+      "description": "ID do usuário que enviou"
+    },
+    "from_user_name": {
+      "type": "string",
+      "description": "Nome do usuário que enviou"
+    },
+    "to_user_id": {
+      "type": "string",
+      "description": "ID do usuário destinatário"
+    },
+    "to_user_name": {
+      "type": "string",
+      "description": "Nome do usuário destinatário"
+    },
+    "message": {
+      "type": "string",
+      "description": "Conteúdo da mensagem"
+    },
+    "read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se a mensagem foi lida"
+    }
+  },
+  "required": [
+    "from_user_id",
+    "to_user_id",
+    "message"
+  ]
+}
