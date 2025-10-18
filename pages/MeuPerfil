@@ -1,0 +1,179 @@
+import React, { useState, useEffect, useRef } from "react";
+import { base44 } from "@/api/base44Client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserCog, Save, Loader2, Camera, CheckCircle, Phone, KeyRound } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+export default function MeuPerfil() {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef(null);
+
+  const [user, setUser] = useState(null);
+  const [formData, setFormData] = useState({ fullName: "", telefone: "", chave_pix: "" });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await base44.auth.me();
+        setUser(userData);
+        setFormData({ 
+            fullName: userData.full_name || "", 
+            telefone: userData.telefone || "",
+            chave_pix: userData.chave_pix || ""
+        });
+        setPreviewUrl(userData.photo_url);
+      } catch (error) {
+        console.error("Erro ao carregar usuário:", error);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (dataToUpdate) => {
+      let finalData = { 
+        full_name: dataToUpdate.fullName,
+        telefone: dataToUpdate.telefone,
+        chave_pix: dataToUpdate.chave_pix,
+      };
+      
+      if (dataToUpdate.file) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: dataToUpdate.file });
+        finalData.photo_url = file_url;
+      }
+
+      return base44.auth.updateMe(finalData);
+    },
+    onSuccess: (updatedUser) => {
+      setUser(updatedUser);
+      setPreviewUrl(updatedUser.photo_url);
+      setSelectedFile(null);
+      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
+      
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    },
+  });
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    updateProfileMutation.mutate({
+      ...formData,
+      file: selectedFile,
+    });
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Meu Perfil</h1>
+          <p className="text-slate-600">Atualize suas informações pessoais e de pagamento</p>
+        </div>
+
+        {showSuccess && (
+          <Alert className="mb-6 bg-green-50 border-green-200">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <AlertDescription className="text-green-800 font-medium">
+              Perfil atualizado com sucesso!
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+          <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <UserCog className="w-6 h-6 text-blue-600" />
+              Editar Informações
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="relative">
+                  <Avatar className="w-32 h-32 border-4 border-white shadow-lg">
+                    {previewUrl && <AvatarImage src={previewUrl} />}
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-500 text-white text-4xl font-semibold">
+                      {formData.fullName?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="absolute bottom-1 right-1 rounded-full bg-slate-800 hover:bg-slate-900"
+                    onClick={() => fileInputRef.current.click()}
+                  >
+                    <Camera className="w-5 h-5" />
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fullName" className="text-slate-700 font-medium">
+                  Nome Completo
+                </Label>
+                <Input
+                  id="fullName"
+                  value={formData.fullName}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  className="h-12 text-lg border-slate-300 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-slate-700 font-medium">
+                  E-mail (não editável)
+                </Label>
+                <Input
+                  id="email"
+                  value={user.email}
+                  className="h-12 text-lg border-slate-300 bg-slate-100 cursor-not-allowed"
+                  disabled
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="telefone" className="text-slate-700 font-medium flex items-center gap-2">
+                      <Phone className="w-4 h-4"/>
+                      Telefone
+                  </Label>
+                  <Input
+                    id="telefone"
+                    value={formData.telefone}
+                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                    className="h-12 text-lg border-slate-300 focus:border-blue-500"
+                    placeholder="(XX) XXXXX-XXXX"
+                  />
+                </div>
