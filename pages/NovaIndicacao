@@ -1,0 +1,363 @@
+
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserPlus, Building2, Phone, FileText, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+
+export default function NovaIndicacao() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState(null);
+  const [formData, setFormData] = useState({
+    nome_indicado: "",
+    telefone: "",
+    detalhes: "",
+    empresa_id: "",
+  });
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [phoneError, setPhoneError] = useState(null);
+  const [checkingPhone, setCheckingPhone] = useState(false);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await base44.auth.me();
+        setUser(userData);
+      } catch (error) {
+        console.error("Erro ao carregar usuário:", error);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => base44.entities.Company.filter({ ativa: true }),
+  });
+
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ['vendedores', user?.company_id],
+    queryFn: async () => {
+      if (!user?.company_id) return [];
+      const allUsers = await base44.entities.User.filter({ company_id: user.company_id });
+      return allUsers.filter(u => u.user_type === 'vendedor' && u.ativo);
+    },
+    enabled: !!user?.company_id,
+  });
+
+  const { data: existingLeads = [] } = useQuery({
+    queryKey: ['existing-leads', user?.company_id],
+    queryFn: async () => {
+      if (!user?.company_id) return [];
+      return await base44.entities.Lead.filter({ company_id: user.company_id });
+    },
+    enabled: !!user?.company_id
+  });
+
+  const { data: distributions = [] } = useQuery({
+    queryKey: ['vendedor-distributions', user?.company_id],
+    queryFn: async () => {
+      if (!user?.company_id) return [];
+      // Assuming VendedorDistribution entity also has a company_id for filtering
+      return await base44.entities.VendedorDistribution.filter({ company_id: user.company_id });
+    },
+    enabled: !!user?.company_id && vendedores.length > 0,
+  });
+
+  const checkPhoneDuplicate = async (phone) => {
+    if (!phone || phone.length < 10) {
+      setPhoneError(null);
+      return;
+    }
+
+    setCheckingPhone(true);
+    const cleanPhone = phone.replace(/\D/g, '');
+    const isDuplicate = existingLeads.some(lead => {
+      const existingCleanPhone = lead.telefone.replace(/\D/g, '');
+      return existingCleanPhone === cleanPhone;
+    });
+
+    if (isDuplicate) {
+      setPhoneError("❌ Esse número já foi indicado anteriormente.");
+    } else {
+      setPhoneError(null);
+    }
+    setCheckingPhone(false);
+  };
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (formData.telefone) {
+        checkPhoneDuplicate(formData.telefone);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [formData.telefone, existingLeads]);
+
+  const getNextVendedor = () => {
+    if (vendedores.length === 0) return null;
+
+    const vendedorStats = vendedores.map(v => {
+      const dist = distributions.find(d => d.vendedor_id === v.id);
+      return {
+        vendedor: v,
+        count: dist?.leads_count || 0,
+        lastAssigned: dist?.last_assigned ? new Date(dist.last_assigned) : new Date(0),
+      };
+    });
+
+    vendedorStats.sort((a, b) => {
+      if (a.count !== b.count) {
+        return a.count - b.count;
+      }
+      return a.lastAssigned.getTime() - b.lastAssigned.getTime();
+    });
+
+    return vendedorStats[0].vendedor;
+  };
+
+  const createLeadMutation = useMutation({
+    mutationFn: async (leadData) => {
+      return await base44.entities.Lead.create(leadData);
+    },
+    onSuccess: async (newLead) => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['existing-leads', user.company_id] });
+      
+      const selectedCompany = companies.find(c => c.id === formData.empresa_id);
+      
+      if (newLead.vendedor_id) {
+        const existingDist = distributions.find(d => d.vendedor_id === newLead.vendedor_id);
+        
+        if (existingDist) {
+          await base44.entities.VendedorDistribution.update(existingDist.id, {
+            leads_count: (existingDist.leads_count || 0) + 1,
+            last_assigned: new Date().toISOString(),
+          });
+        } else {
+          await base44.entities.VendedorDistribution.create({
+            vendedor_id: newLead.vendedor_id,
+            leads_count: 1,
+            last_assigned: new Date().toISOString(),
+            company_id: user.company_id, // Ensure new distribution records are also tied to the company
+          });
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ['vendedor-distributions', user.company_id] });
+      }
+      
+      try {
+        await base44.integrations.Core.SendEmail({
+          to: user.email,
+          subject: "✅ Indicação Enviada com Sucesso!",
+          body: `
+            Olá ${user.full_name},
+            
+            Sua indicação foi cadastrada com sucesso!
+            
+            📋 Detalhes:
+            - Cliente: ${formData.nome_indicado}
+            - Telefone: ${formData.telefone}
+            - Empresa: ${selectedCompany?.nome}
+            - Data: ${new Date().toLocaleString('pt-BR')}
+            
+            Em breve um vendedor entrará em contato com o cliente.
+            Você pode acompanhar o status na plataforma.
+            
+            Obrigado por indicar!
+          `
+        });
+      } catch (error) {
+        console.error("Erro ao enviar e-mail:", error);
+      }
+
+      setShowSuccess(true);
+      setFormData({
+        nome_indicado: "",
+        telefone: "",
+        detalhes: "",
+        empresa_id: "",
+      });
+
+      setTimeout(() => {
+        setShowSuccess(false);
+        navigate(createPageUrl("MinhasIndicacoes"));
+      }, 3000);
+    },
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    if (phoneError || !user?.company_id) { // Added check for user.company_id
+      return;
+    }
+    
+    const selectedCompany = companies.find(c => c.id === formData.empresa_id);
+    const vendedor = getNextVendedor();
+
+    const leadData = {
+      ...formData,
+      company_id: user.company_id, // Add company_id from user
+      empresa_nome: selectedCompany?.nome,
+      indicador_id: user.id,
+      indicador_nome: user.full_name,
+      vendedor_id: vendedor?.id || null,
+      vendedor_nome: vendedor?.full_name || null,
+      status: "nova",
+    };
+
+    createLeadMutation.mutate(leadData);
+  };
+
+  const isFormValid = formData.nome_indicado && formData.telefone && formData.detalhes && formData.empresa_id && !phoneError && !!user?.company_id;
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Nova Indicação</h1>
+          <p className="text-slate-600">Cadastre uma nova indicação de cliente</p>
+        </div>
+
+        {showSuccess && (
+          <Alert className="mb-6 bg-green-50 border-green-200">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <AlertDescription className="text-green-800 font-medium">
+              ✅ Indicação enviada com sucesso! Redirecionando...
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+          <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <UserPlus className="w-6 h-6 text-blue-600" />
+              Dados da Indicação
+            </CardTitle>
+            <CardDescription>
+              Preencha todos os campos abaixo para cadastrar a indicação
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="nome_indicado" className="flex items-center gap-2 text-slate-700 font-medium">
+                  <UserPlus className="w-4 h-4" />
+                  Nome do Indicado *
+                </Label>
+                <Input
+                  id="nome_indicado"
+                  value={formData.nome_indicado}
+                  onChange={(e) => setFormData({ ...formData, nome_indicado: e.target.value })}
+                  placeholder="Ex: João Silva"
+                  className="h-12 text-lg border-slate-300 focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="telefone" className="flex items-center gap-2 text-slate-700 font-medium">
+                  <Phone className="w-4 h-4" />
+                  Número de Telefone *
+                </Label>
+                <Input
+                  id="telefone"
+                  value={formData.telefone}
+                  onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                  placeholder="Ex: (34) 99999-9999"
+                  className={`h-12 text-lg border-slate-300 focus:border-blue-500 ${phoneError ? 'border-red-500' : ''}`}
+                  required
+                />
+                {checkingPhone && (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Verificando número...
+                  </div>
+                )}
+                {phoneError && (
+                  <Alert className="bg-red-50 border-red-200">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <AlertDescription className="text-red-800 font-medium">
+                      {phoneError}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="empresa_id" className="flex items-center gap-2 text-slate-700 font-medium">
+                  <Building2 className="w-4 h-4" />
+                  Empresa Destino *
+                </Label>
+                <Select
+                  value={formData.empresa_id}
+                  onValueChange={(value) => setFormData({ ...formData, empresa_id: value })}
+                  required
+                >
+                  <SelectTrigger className="h-12 text-lg border-slate-300 focus:border-blue-500">
+                    <SelectValue placeholder="Selecione a empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="detalhes" className="flex items-center gap-2 text-slate-700 font-medium">
+                  <FileText className="w-4 h-4" />
+                  Detalhes da Indicação *
+                </Label>
+                <Textarea
+                  id="detalhes"
+                  value={formData.detalhes}
+                  onChange={(e) => setFormData({ ...formData, detalhes: e.target.value })}
+                  placeholder="Descreva informações importantes sobre o cliente e seu interesse..."
+                  className="min-h-32 text-lg border-slate-300 focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!isFormValid || createLeadMutation.isPending}
+                className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {createLeadMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                    Adicionar Indicação
+                  </>
+                )}
+              </Button>
+
+              <p className="text-sm text-slate-500 text-center">
+                * Todos os campos são obrigatórios
+              </p>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
