@@ -1,0 +1,36 @@
+{
+  "name": "Membership",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "ID do usuário"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Nome do usuário (denormalized)"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "ID da empresa"
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Nome da empresa (denormalized)"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "indicador",
+        "vendedor",
+        "admin"
+      ],
+      "description": "Perfil do usuário nesta empresa"
+    }
+  },
+  "required": [
+    "user_id",
+    "company_id",
+    "role"
+  ]
+}
