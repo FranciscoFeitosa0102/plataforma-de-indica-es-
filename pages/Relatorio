@@ -177,3 +177,88 @@ export default function Relatorios() {
                           className={`${statusLabels[status].color} h-3 rounded-full transition-all duration-500`}
                           style={{ width: `${percentage}%` }}
                         />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+            <CardHeader className="border-b bg-gradient-to-r from-green-50 to-emerald-50">
+              <CardTitle className="flex items-center gap-2">
+                <Target className="w-5 h-5 text-green-600" />
+                Top Vendedores
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                {topVendedores.map((vendedor, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                        index === 0 ? 'bg-yellow-500 text-white' :
+                        index === 1 ? 'bg-gray-400 text-white' :
+                        index === 2 ? 'bg-orange-600 text-white' :
+                        'bg-blue-500 text-white'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900">{vendedor.nome}</p>
+                        <p className="text-sm text-slate-600">{vendedor.total} leads</p>
+                      </div>
+                    </div>
+                    <Badge className="bg-green-100 text-green-700">
+                      {vendedor.fechados} fechados
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+          <CardHeader className="border-b bg-gradient-to-r from-orange-50 to-yellow-50">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-orange-600" />
+              Top Indicadores
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {topIndicadores.map((indicador, index) => (
+                <div
+                  key={index}
+                  className={`p-4 rounded-xl transition-all hover:scale-105 ${
+                    index === 0 ? 'bg-gradient-to-r from-yellow-100 to-orange-100 shadow-lg' :
+                    index === 1 ? 'bg-gradient-to-r from-gray-100 to-slate-200' :
+                    index === 2 ? 'bg-gradient-to-r from-orange-50 to-amber-100' :
+                    'bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                      index === 0 ? 'bg-yellow-500 text-white' :
+                      index === 1 ? 'bg-gray-400 text-white' :
+                      index === 2 ? 'bg-orange-600 text-white' :
+                      'bg-blue-500 text-white'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-900">{indicador.nome}</p>
+                      <p className="text-sm text-slate-600">{indicador.count} indicações</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
