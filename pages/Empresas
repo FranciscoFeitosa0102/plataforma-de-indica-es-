@@ -177,3 +177,54 @@ export default function Empresas() {
                             <>
                               <Button
                                 size="sm"
+                                onClick={() => handleUpdateCompany(company.id)}
+                                disabled={updateCompanyMutation.isPending}
+                              >
+                                <Save className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditingId(null)}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startEditing(company)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={company.ativa ? "destructive" : "default"}
+                                onClick={() => handleToggleStatus(company.id, company.ativa)}
+                              >
+                                {company.ativa ? 'Desativar' : 'Ativar'}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {companies.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-8 text-slate-500">
+                        Nenhuma empresa cadastrada ainda
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
