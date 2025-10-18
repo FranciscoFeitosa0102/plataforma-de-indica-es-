@@ -177,3 +177,42 @@ export default function MeuPerfil() {
                     placeholder="(XX) XXXXX-XXXX"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="chave_pix" className="text-slate-700 font-medium flex items-center gap-2">
+                      <KeyRound className="w-4 h-4"/>
+                      Chave Pix
+                  </Label>
+                  <Input
+                    id="chave_pix"
+                    value={formData.chave_pix}
+                    onChange={(e) => setFormData({ ...formData, chave_pix: e.target.value })}
+                    className="h-12 text-lg border-slate-300 focus:border-blue-500"
+                    placeholder="CPF, e-mail, telefone..."
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={updateProfileMutation.isPending}
+                className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg"
+              >
+                {updateProfileMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-5 h-5 mr-2" />
+                    Salvar Alterações
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
