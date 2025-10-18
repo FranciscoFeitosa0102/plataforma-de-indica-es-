@@ -1,0 +1,70 @@
+{
+  "name": "Lead",
+  "type": "object",
+  "properties": {
+    "nome_indicado": {
+      "type": "string",
+      "description": "Nome completo do indicado"
+    },
+    "telefone": {
+      "type": "string",
+      "description": "Número de telefone do indicado"
+    },
+    "detalhes": {
+      "type": "string",
+      "description": "Detalhes e observações sobre a indicação"
+    },
+    "empresa_id": {
+      "type": "string",
+      "description": "ID da empresa destino"
+    },
+    "empresa_nome": {
+      "type": "string",
+      "description": "Nome da empresa (para facilitar consultas)"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "ID da empresa à qual este lead pertence"
+    },
+    "indicador_id": {
+      "type": "string",
+      "description": "ID do usuário que fez a indicação"
+    },
+    "indicador_nome": {
+      "type": "string",
+      "description": "Nome do indicador"
+    },
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor responsável"
+    },
+    "vendedor_nome": {
+      "type": "string",
+      "description": "Nome do vendedor"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "nova",
+        "em_contato",
+        "sem_interesse",
+        "fechado",
+        "outra_area"
+      ],
+      "default": "nova",
+      "description": "Status atual do lead"
+    },
+    "observacoes": {
+      "type": "string",
+      "description": "Observações do vendedor sobre o lead"
+    }
+  },
+  "required": [
+    "nome_indicado",
+    "telefone",
+    "detalhes",
+    "empresa_id",
+    "indicador_id",
+    "company_id"
+  ]
+}
