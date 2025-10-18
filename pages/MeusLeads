@@ -1,0 +1,179 @@
+
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Target, TrendingUp, CheckCircle, XCircle, Users, Building } from "lucide-react"; // Added Building icon
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Added Select components
+import KanbanBoard from "../components/kanban/KanbanBoard";
+
+export default function MeusLeads() {
+  const [user, setUser] = useState(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+  const [companies, setCompanies] = useState([]); // To store all companies the user can access
+
+  useEffect(() => {
+    const fetchUserAndCompanies = async () => {
+      try {
+        const userData = await base44.auth.me();
+        setUser(userData); // Store the full user data
+
+        let userCompanies = [];
+        // Prioritize `accessible_companies` if provided by the API
+        if (userData?.accessible_companies && Array.isArray(userData.accessible_companies) && userData.accessible_companies.length > 0) {
+          userCompanies = userData.accessible_companies;
+        } else if (userData?.company_id) {
+          // Fallback: If no explicit accessible_companies, assume the user only has access to their current company
+          userCompanies = [{ id: userData.company_id, name: userData.company_name || "Empresa Atual" }];
+        }
+        setCompanies(userCompanies);
+
+        // Set initial selected company
+        if (userData?.company_id) {
+          setSelectedCompanyId(userData.company_id);
+        } else if (userCompanies.length > 0) {
+          setSelectedCompanyId(userCompanies[0].id); // Default to the first accessible company
+        } else {
+          setSelectedCompanyId(null); // No companies found
+        }
+
+      } catch (error) {
+        console.error("Failed to fetch user data or companies:", error);
+        // In a real app, you might want to redirect to a login page or show an error state.
+      }
+    };
+    fetchUserAndCompanies();
+  }, []);
+
+  // Use selectedCompanyId for fetching leads
+  const { data: leads = [], isLoading } = useQuery({
+    queryKey: ['vendedor-leads', user?.id, selectedCompanyId], // Query key now depends on selectedCompanyId
+    queryFn: async () => {
+      if (!user?.id || !selectedCompanyId) return []; // Only fetch if user and selectedCompanyId are available
+      const companyLeads = await base44.entities.Lead.filter(
+        { company_id: selectedCompanyId }, // Filter leads by the selected company ID
+        "-created_date"
+      );
+      // Vendedor vê leads da sua empresa que são dele ou que estão sem vendedor
+      return companyLeads.filter(lead => lead.vendedor_id === user?.id || !lead.vendedor_id);
+    },
+    enabled: !!user?.id && !!selectedCompanyId, // Enable query if user id and selected company id are available
+    refetchInterval: 5000,
+  });
+
+  const handleCompanyChange = (newCompanyId) => {
+    setSelectedCompanyId(newCompanyId);
+    // Optionally: If you want to persist the user's selected company, you could make an API call here
+    // e.g., `base44.auth.updateUserPreferences({ default_company_id: newCompanyId });`
+  };
+
+  const leadsNovas = leads.filter(l => l.status === 'nova').length;
+  const leadsEmContato = leads.filter(l => l.status === 'em_contato').length;
+  const leadsFechados = leads.filter(l => l.status === 'fechado').length;
+  const leadsSemInteresse = leads.filter(l => l.status === 'sem_interesse').length;
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Meus Leads</h1>
+            <p className="text-slate-600">Gerencie seus leads movendo os cards entre as colunas</p>
+          </div>
+          {/* Company Selector */}
+          {companies.length > 1 && selectedCompanyId && ( // Only show if there's more than one company to select from and a company is selected
+            <div className="mt-4 md:mt-0 flex items-center gap-2">
+              <Building className="w-5 h-5 text-slate-600" />
+              <Select onValueChange={handleCompanyChange} value={selectedCompanyId}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Selecione a empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {companies.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <Target className="w-4 h-4" />
+                Novas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{leadsNovas}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-yellow-500 to-orange-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <TrendingUp className="w-4 h-4" />
+                Em Contato
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{leadsEmContato}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <CheckCircle className="w-4 h-4" />
+                Fechados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{leadsFechados}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-xl border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-white text-sm">
+                <XCircle className="w-4 h-4" />
+                Sem Interesse
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-4xl font-bold">{leadsSemInteresse}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mb-6 bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
+          <p className="text-blue-900 font-medium">
+            💡 Arraste os cards entre as colunas para atualizar o status dos leads
+          </p>
+          <p className="text-blue-700 text-sm mt-1">
+            As mudanças serão sincronizadas automaticamente com quem fez a indicação
+          </p>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-64 w-full" />
+          </div>
+        ) : (
+          <KanbanBoard leads={leads} isVendedor={true} currentUser={user} />
+        )}
+      </div>
+    </div>
+  );
+}
