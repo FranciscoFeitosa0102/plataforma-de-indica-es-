@@ -1,0 +1,61 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Loader2 } from "lucide-react";
+import OnboardingProfileSelector from "../components/OnboardingProfileSelector";
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('loading'); // loading, onboarding, redirecting
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const checkUserAndRedirect = async () => {
+      try {
+        const userData = await base44.auth.me();
+        setUser(userData);
+        
+        const memberships = await base44.entities.Membership.filter({ user_id: userData.id });
+
+        if (memberships.length === 0) {
+          setStatus('onboarding');
+        } else {
+            const storedMembershipId = localStorage.getItem("activeMembershipId");
+            const activeMembership = memberships.find(m => m.id === storedMembershipId) || memberships[0];
+
+            // Ensure local storage is set with a valid ID
+            localStorage.setItem("activeMembershipId", activeMembership.id);
+
+            if (activeMembership.role === 'indicador') navigate(createPageUrl("MinhasIndicacoes"));
+            else if (activeMembership.role === 'vendedor') navigate(createPageUrl("MeusLeads"));
+            else if (activeMembership.role === 'admin') navigate(createPageUrl("Relatorios"));
+            else navigate(createPageUrl("MeuPerfil")); // Fallback
+            setStatus('redirecting');
+        }
+      } catch (error) {
+        console.error("Erro ao redirecionar:", error);
+        base44.auth.redirectToLogin();
+      }
+    };
+
+    checkUserAndRedirect();
+  }, [navigate]);
+
+  if (status === 'loading' || status === 'redirecting') {
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="text-slate-600">Carregando...</p>
+          </div>
+        </div>
+    );
+  }
+  
+  if (status === 'onboarding') {
+    return <OnboardingProfileSelector user={user} />;
+  }
+
+  return null;
+}
