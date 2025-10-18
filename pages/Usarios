@@ -1,0 +1,179 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose
+} from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Settings, Plus, X, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+function ManageUserMemberships({ user, companies }) {
+    const queryClient = useQueryClient();
+    const [newMembership, setNewMembership] = useState({ company_id: "", role: "" });
+
+    const { data: memberships = [], isLoading } = useQuery({
+        queryKey: ['memberships', user.id],
+        queryFn: () => base44.entities.Membership.filter({ user_id: user.id }),
+    });
+
+    const createMembershipMutation = useMutation({
+        mutationFn: (data) => base44.entities.Membership.create(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['memberships', user.id] });
+            setNewMembership({ company_id: "", role: "" });
+        }
+    });
+
+    const deleteMembershipMutation = useMutation({
+        mutationFn: (id) => base44.entities.Membership.delete(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['memberships', user.id] });
+        }
+    });
+
+    const handleAddMembership = () => {
+        if (!newMembership.company_id || !newMembership.role) return;
+
+        const company = companies.find(c => c.id === newMembership.company_id);
+        if(!company) return;
+
+        createMembershipMutation.mutate({
+            user_id: user.id,
+            user_name: user.full_name,
+            company_id: company.id,
+            company_name: company.nome,
+            role: newMembership.role
+        });
+    };
+
+    return (
+        <DialogContent className="sm:max-w-[625px]">
+            <DialogHeader>
+                <DialogTitle>Gerenciar Perfis de {user.full_name}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="space-y-2 p-4 border rounded-lg">
+                    <h4 className="font-medium text-slate-800">Adicionar Novo Perfil</h4>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <Select value={newMembership.company_id} onValueChange={(value) => setNewMembership(prev => ({...prev, company_id: value}))}>
+                            <SelectTrigger><SelectValue placeholder="Selecione a empresa" /></SelectTrigger>
+                            <SelectContent>
+                                {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <Select value={newMembership.role} onValueChange={(value) => setNewMembership(prev => ({...prev, role: value}))}>
+                            <SelectTrigger><SelectValue placeholder="Selecione o perfil" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="indicador">Indicador</SelectItem>
+                                <SelectItem value="vendedor">Vendedor</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button onClick={handleAddMembership} disabled={createMembershipMutation.isPending || !newMembership.company_id || !newMembership.role}>
+                            {createMembershipMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin"/> : <Plus className="w-4 h-4" />}
+                            <span className="sm:hidden ml-2">Adicionar</span>
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="space-y-2 mt-4">
+                     <h4 className="font-medium text-slate-800">Perfis Ativos</h4>
+                     {isLoading ? <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div> : (
+                        <div className="space-y-2 border rounded-lg p-2 max-h-60 overflow-y-auto">
+                            {memberships.map(m => (
+                                <div key={m.id} className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-md">
+                                    <div>
+                                        <span className="font-semibold text-slate-900">{m.company_name}</span>
+                                        <Badge variant="secondary" className="ml-2">{m.role}</Badge>
+                                    </div>
+                                    <Button size="icon" variant="ghost" onClick={() => deleteMembershipMutation.mutate(m.id)} disabled={deleteMembershipMutation.isPending} className="text-red-500 hover:bg-red-100 hover:text-red-700">
+                                        {deleteMembershipMutation.isPending && deleteMembershipMutation.variables === m.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <X className="w-4 h-4" />}
+                                    </Button>
+                                </div>
+                            ))}
+                             {memberships.length === 0 && <p className="text-sm text-slate-500 text-center py-8">Nenhum perfil associado. Adicione um acima para ativar este usuário.</p>}
+                        </div>
+                     )}
+                </div>
+            </div>
+             <DialogFooter>
+                <DialogClose asChild>
+                    <Button type="button" variant="outline">Fechar</Button>
+                </DialogClose>
+            </DialogFooter>
+        </DialogContent>
+    )
+}
+
+export default function Usuarios() {
+  const queryClient = useQueryClient();
+
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['all-users'],
+    queryFn: () => base44.entities.User.list("-created_date"),
+  });
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ['all-companies-for-users'],
+    queryFn: () => base44.entities.Company.list(),
+  });
+  
+  const updateUserMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.User.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+    },
+  });
+
+  const handleToggleUserStatus = (userId, currentStatus) => {
+    updateUserMutation.mutate({
+      id: userId,
+      data: { ativo: !currentStatus },
+    });
+  };
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Gerenciamento de Usuários</h1>
+            <p className="text-slate-600">Atribua perfis e empresas aos usuários do sistema</p>
+          </div>
+        </div>
+
+        <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
+          <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+            <CardTitle>Lista de Usuários</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50 hover:bg-slate-100">
+                    <TableHead>Usuário</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={3} className="text-center p-8"><Loader2 className="w-6 h-6 animate-spin mx-auto"/></TableCell></TableRow>
+                  ) : users.map((user) => (
+                    <TableRow key={user.id} className={!user.ativo ? 'bg-red-50/50 opacity-60' : ''}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-10 h-10 border-2 border-slate-200">
+                            {user.photo_url && <AvatarImage src={user.photo_url} alt={user.full_name} />}
+                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-500 text-white font-semibold">
