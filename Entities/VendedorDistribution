@@ -1,0 +1,23 @@
+{
+  "name": "VendedorDistribution",
+  "type": "object",
+  "properties": {
+    "vendedor_id": {
+      "type": "string",
+      "description": "ID do vendedor"
+    },
+    "leads_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade de leads distribuídos"
+    },
+    "last_assigned": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Última vez que recebeu um lead"
+    }
+  },
+  "required": [
+    "vendedor_id"
+  ]
+}
