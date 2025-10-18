@@ -1,0 +1,27 @@
+{
+  "name": "LeadMessage",
+  "type": "object",
+  "properties": {
+    "lead_id": {
+      "type": "string",
+      "description": "ID do lead"
+    },
+    "from_user_id": {
+      "type": "string",
+      "description": "ID do usuário que enviou"
+    },
+    "from_user_name": {
+      "type": "string",
+      "description": "Nome do usuário que enviou"
+    },
+    "message": {
+      "type": "string",
+      "description": "Conteúdo da mensagem"
+    }
+  },
+  "required": [
+    "lead_id",
+    "from_user_id",
+    "message"
+  ]
+}
