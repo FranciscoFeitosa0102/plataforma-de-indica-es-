@@ -177,3 +177,7 @@ export default function Mensagens() {
             </CardContent>
           </Card>
         </div>
+      </div>
+    </div>
+  );
+}
