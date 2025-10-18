@@ -1,0 +1,324 @@
+
+import React, { useState, useEffect } from "react";
+import { Draggable } from "@hello-pangea/dnd";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { User, Phone, Building2, Calendar, MessageSquare, Edit2, Save, X, Trash2, Send } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+export default function LeadCard({ lead, index, isVendedor, currentUser }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [observacoes, setObservacoes] = useState(lead.observacoes || "");
+  const [showChat, setShowChat] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const queryClient = useQueryClient();
+
+  const { data: messages = [] } = useQuery({
+    queryKey: ['lead-messages', lead.id],
+    queryFn: () => base44.entities.LeadMessage.filter({ lead_id: lead.id }, "-created_date"),
+    refetchInterval: 3000,
+  });
+
+  const updateLeadMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Lead.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setIsEditing(false);
+    },
+  });
+
+  const deleteLeadMutation = useMutation({
+    mutationFn: (id) => base44.entities.Lead.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['my-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['vendedor-leads'] });
+    },
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (data) => base44.entities.LeadMessage.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead-messages'] });
+      setNewMessage("");
+    },
+  });
+
+  const handleSaveObservacoes = () => {
+    updateLeadMutation.mutate({
+      id: lead.id,
+      data: { observacoes },
+    });
+  };
+
+  const handleDeleteLead = () => {
+    deleteLeadMutation.mutate(lead.id);
+  };
+
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    sendMessageMutation.mutate({
+      lead_id: lead.id,
+      from_user_id: currentUser.id,
+      from_user_name: currentUser.full_name,
+      message: newMessage,
+    });
+  };
+
+  const reversedMessages = [...messages].reverse();
+
+  const isIndicador = currentUser?.id === lead.indicador_id;
+  const canDelete = isIndicador;
+
+  return (
+    <Draggable draggableId={lead.id} index={index} isDragDisabled={!isVendedor}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+        >
+          <Card className={`transition-all duration-200 hover:shadow-xl ${
+            snapshot.isDragging ? 'shadow-2xl ring-2 ring-blue-400 rotate-2' : 'shadow-md'
+          } bg-white border-slate-200`}>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <h3 className="font-bold text-slate-900 truncate">{lead.nome_indicado}</h3>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Phone className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">{lead.telefone}</span>
+                  </div>
+                </div>
+                {canDelete && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tem certeza que deseja excluir esta indicação? Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteLead}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Excluir
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Building2 className="w-3 h-3 flex-shrink-0" />
+                  <span className="font-medium truncate">{lead.empresa_nome}</span>
+                </div>
+                
+                {lead.detalhes && (
+                  <p className="text-slate-600 text-xs bg-slate-50 p-2 rounded break-words">
+                    {lead.detalhes}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Calendar className="w-3 h-3" />
+                  {format(new Date(lead.created_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-600">Por: {lead.indicador_nome}</span>
+                  {lead.vendedor_nome && (
+                    <Badge className="bg-blue-100 text-blue-700 text-xs">
+                      {lead.vendedor_nome}
+                    </Badge>
+                  )}
+                </div>
+
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={observacoes}
+                      onChange={(e) => setObservacoes(e.target.value)}
+                      placeholder="Adicione observações sobre este lead..."
+                      className="text-sm min-h-20"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleSaveObservacoes}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        disabled={updateLeadMutation.isPending}
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        Salvar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditing(false);
+                          setObservacoes(lead.observacoes || "");
+                        }}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {lead.observacoes && (
+                      <div className="bg-blue-50 p-2 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <MessageSquare className="w-3 h-3 text-blue-600 mt-0.5" />
+                          <p className="text-xs text-slate-700 flex-1">{lead.observacoes}</p>
+                        </div>
+                      </div>
+                    )}
+                    {isVendedor && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsEditing(true)}
+                        className="w-full"
+                      >
+                        <Edit2 className="w-3 h-3 mr-1" />
+                        {lead.observacoes ? 'Editar Observações' : 'Adicionar Observações'}
+                      </Button>
+                    )}
+                  </>
+                )}
+
+                <Dialog open={showChat} onOpenChange={setShowChat}>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full mt-2 relative"
+                    >
+                      <MessageSquare className="w-3 h-3 mr-1" />
+                      Chat com {isIndicador ? 'Vendedor' : 'Indicador'}
+                      {messages.length > 0 && (
+                        <Badge className="ml-auto bg-blue-500 text-white h-5 min-w-5 p-1">
+                          {messages.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-blue-600" />
+                        Chat sobre esta indicação
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col h-[400px]">
+                      <ScrollArea className="flex-1 pr-4">
+                        <div className="space-y-3 py-4">
+                          {reversedMessages.length === 0 ? (
+                            <p className="text-center text-slate-400 text-sm py-8">
+                              Nenhuma mensagem ainda. Inicie a conversa!
+                            </p>
+                          ) : (
+                            reversedMessages.map((msg) => {
+                              const isMyMessage = msg.from_user_id === currentUser?.id;
+                              return (
+                                <div
+                                  key={msg.id}
+                                  className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}
+                                >
+                                  <div
+                                    className={`max-w-[80%] p-3 rounded-2xl ${
+                                      isMyMessage
+                                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
+                                        : 'bg-slate-100 text-slate-900'
+                                    }`}
+                                  >
+                                    <p className="text-xs font-medium mb-1 opacity-80">
+                                      {msg.from_user_name}
+                                    </p>
+                                    <p className="text-sm">{msg.message}</p>
+                                    <p className={`text-xs mt-1 ${isMyMessage ? 'text-blue-100' : 'text-slate-500'}`}>
+                                      {format(new Date(msg.created_date), "HH:mm", { locale: ptBR })}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </ScrollArea>
+
+                      <form onSubmit={handleSendMessage} className="mt-4 pt-4 border-t">
+                        <div className="flex gap-2">
+                          <Input
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder="Digite sua mensagem..."
+                            className="flex-1"
+                          />
+                          <Button
+                            type="submit"
+                            disabled={!newMessage.trim() || sendMessageMutation.isPending}
+                            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                          >
+                            <Send className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </form>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </Draggable>
+  );
+}
